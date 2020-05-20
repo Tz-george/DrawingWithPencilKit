@@ -35,63 +35,66 @@ import PencilKit
 
 class DrawingViewController: UIViewController, PKCanvasViewDelegate, PKToolPickerObserver, UIScreenshotServiceDelegate {
     
-    @IBOutlet weak var canvasView: PKCanvasView!
-    @IBOutlet weak var pencilFingerBarButtonItem: UIBarButtonItem!
-    @IBOutlet var undoBarButtonitem: UIBarButtonItem!
-    @IBOutlet var redoBarButtonItem: UIBarButtonItem!
+    @IBOutlet weak var canvasView: PKCanvasView!                    // <- 画布视图
+    @IBOutlet weak var pencilFingerBarButtonItem: UIBarButtonItem!  // <-
+    @IBOutlet var undoBarButtonitem: UIBarButtonItem!               //
+    @IBOutlet var redoBarButtonItem: UIBarButtonItem!               //
     
     /// Standard amount of overscroll allowed in the canvas.
-    static let canvasOverscrollHeight: CGFloat = 500
+    static let canvasOverscrollHeight: CGFloat = 500                // <- 画布的边界允许距离屏幕边界的最大距离
     
     /// Data model for the drawing displayed by this view controller.
-    var dataModelController: DataModelController!
+    var dataModelController: DataModelController!                   // model，MVC架构中的模型
     
     /// Private drawing state.
     var drawingIndex: Int = 0
-    var signatureGestureRecognizer: UITapGestureRecognizer!
-    var hasModifiedDrawing = false
+    var signatureGestureRecognizer: UITapGestureRecognizer! // 手势识别器
+    var hasModifiedDrawing = false                          // 是否有新的绘画
     
     // MARK: View Life Cycle
     
     /// Set up the drawing initially.
-    override func viewWillAppear(_ animated: Bool) {
+    override func viewWillAppear(_ animated: Bool) {    // 视图即将可用前的生命周期
         super.viewWillAppear(animated)
         
         // Set up the canvas view with the first drawing from the data model.
         canvasView.delegate = self
-        canvasView.drawing = dataModelController.drawings[drawingIndex]
-        canvasView.alwaysBounceVertical = true
-        canvasView.allowsFingerDrawing = false
+        canvasView.drawing = dataModelController.drawings[drawingIndex] //
+        canvasView.alwaysBounceVertical = true  // 设置滚动视图是否反弹
+        canvasView.allowsFingerDrawing = false  // 是否允许使用手指绘图
         
         // Set up the tool picker, using the window of our parent because our view has not
         // been added to a window yet.
+        // 设置工具栏，使用当前视图的父视图（也就是主视图）进行设置，因为执行到这里时，当前视图还没有加载完成，所以没有window
+        // 同时为了遵守单一职责原则，也应当将工具栏设置到当前视图外，因为工具栏并不属于当前视图的功能（工具栏用于变更画图工具，而当前视图主要控制绘图）
         if let window = parent?.view.window, let toolPicker = PKToolPicker.shared(for: window) {
-            toolPicker.setVisible(true, forFirstResponder: canvasView)
+            toolPicker.setVisible(true, forFirstResponder: canvasView)      // 设置是否显示，并绑定响应View
             toolPicker.addObserver(canvasView)
             toolPicker.addObserver(self)
             
-            updateLayout(for: toolPicker)
+            updateLayout(for: toolPicker)   // 设置完成之后调用页面更新，使组件生效
             canvasView.becomeFirstResponder()
         }
         
         // Add a gesture recognizer that allows the user to sign the drawing by
         // tapping on the canvas with a finger.
-        signatureGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(self.signDrawing(_:)))
-        signatureGestureRecognizer.allowedTouchTypes = [UITouch.TouchType.direct.rawValue as NSNumber]
-        canvasView.addGestureRecognizer(signatureGestureRecognizer)
+        signatureGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(self.signDrawing(_:)))  // 创建手势识别器，并监听signDrawing事件
+        signatureGestureRecognizer.allowedTouchTypes = [UITouch.TouchType.direct.rawValue as NSNumber]          // 配置
+        canvasView.addGestureRecognizer(signatureGestureRecognizer) // 将签名手势识别器加入到视图中
         
         // Always show a back button.
-        navigationItem.leftItemsSupplementBackButton = true
+        navigationItem.leftItemsSupplementBackButton = true     // 返回按钮
         
         // Set this view controller as the delegate for creating full screenshots.
-        parent?.view.window?.windowScene?.screenshotService?.delegate = self
+        parent?.view.window?.windowScene?.screenshotService?.delegate = self    // 设置处理屏幕截屏的代理
     }
     
     /// When the view is resized, adjust the canvas scale so that it is zoomed to the default `canvasWidth`.
+    // 当view resized，调整画布的比例
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
-        let canvasScale = canvasView.bounds.width / DataModel.canvasWidth
+        let canvasScale = canvasView.bounds.width / DataModel.canvasWidth   // 计算缩放的比例，
         canvasView.minimumZoomScale = canvasScale
         canvasView.maximumZoomScale = canvasScale
         canvasView.zoomScale = canvasScale
@@ -102,7 +105,7 @@ class DrawingViewController: UIViewController, PKCanvasViewDelegate, PKToolPicke
     }
     
     /// When the view is removed, save the modified drawing, if any.
-    override func viewWillDisappear(_ animated: Bool) {
+    override func viewWillDisappear(_ animated: Bool) { // 视图即将不可用前的生命周期
         super.viewWillDisappear(animated)
         
         // Update the drawing in the data model, if it has changed.
@@ -122,26 +125,26 @@ class DrawingViewController: UIViewController, PKCanvasViewDelegate, PKToolPicke
     // MARK: Actions
     
     /// Action method: Turn finger drawing on or off.
-    @IBAction func toggleFingerPencilDrawing(_ sender: Any) {
+    @IBAction func toggleFingerPencilDrawing(_ sender: Any) {   // <- 事件响应，在 Main.storyboard 中第57行进行绑定，toggle按钮状态切换的响应
         canvasView.allowsFingerDrawing.toggle()
         pencilFingerBarButtonItem.title = canvasView.allowsFingerDrawing ? "Finger" : "Pencil"
     }
     
     /// Helper method to set a new drawing, with an undo action to go back to the old one.
-    func setNewDrawingUndoable(_ newDrawing: PKDrawing) {
-        let oldDrawing = canvasView.drawing
-        undoManager?.registerUndo(withTarget: self) {
+    func setNewDrawingUndoable(_ newDrawing: PKDrawing) {   // 每当有新的绘画轨迹时，将当前的轨迹保存到撤销管理器中，让程序可撤销
+        let oldDrawing = canvasView.drawing                 // 获取当前的轨迹
+        undoManager?.registerUndo(withTarget: self) {       // 将轨迹写入撤销管理器，当触发撤销时，可以撤回
             $0.setNewDrawingUndoable(oldDrawing)
         }
-        canvasView.drawing = newDrawing
+        canvasView.drawing = newDrawing                     // 设置新的轨迹
     }
     
     /// Action method: Add a signature to the current drawing.
-    @IBAction func signDrawing(_ gesture: UITapGestureRecognizer) {
+    @IBAction func signDrawing(_ gesture: UITapGestureRecognizer) { // 事件响应函数，当绘画结束时触发
         
         // Get the signature drawing at the canvas scale.
-        var signature = dataModelController.signature
-        let signatureBounds = signature.bounds
+        var signature = dataModelController.signature   // <- signature 表示绘画的内容，新的线段
+        let signatureBounds = signature.bounds          // <-
         let loc = gesture.location(in: canvasView)
         let scaledLoc = CGPoint(x: loc.x / canvasView.zoomScale, y: loc.y / canvasView.zoomScale)
         signature.transform(CGAffineTransform(translationX: scaledLoc.x - signatureBounds.midX, y: scaledLoc.y - signatureBounds.midY))
@@ -150,29 +153,29 @@ class DrawingViewController: UIViewController, PKCanvasViewDelegate, PKToolPicke
         setNewDrawingUndoable(canvasView.drawing.appending(signature))
     }
     
-    // MARK: Navigation
+    // MARK: Navigation 导航
     
     /// Setup the signature view controller.
-    override func prepare(for segue: UIStoryboardSegue, sender: Any?) {
+    override func prepare(for segue: UIStoryboardSegue, sender: Any?) { // <- view 准备
         (segue.destination as? SignatureViewController)?.dataModelController = dataModelController
     }
     
-    // MARK: Canvas View Delegate
+    // MARK: Canvas View Delegate，PKCanvasViewDelegate协议的函数
     
     /// Delegate method: Note that the drawing has changed.
-    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-        hasModifiedDrawing = true
-        updateContentSizeForDrawing()
+    func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {   // 当绘画完成时触发
+        hasModifiedDrawing = true       // 设置新绘画内容标示器
+        updateContentSizeForDrawing()   // 更新画布
     }
     
     /// Helper method to set a suitable content size for the canvas view.
-    func updateContentSizeForDrawing() {
+    func updateContentSizeForDrawing() {    //
         // Update the content size to match the drawing.
-        let drawing = canvasView.drawing
+        let drawing = canvasView.drawing    // 获取到绘画内容
         let contentHeight: CGFloat
         
         // Adjust the content size to always be bigger than the drawing height.
-        if !drawing.bounds.isNull {
+        if !drawing.bounds.isNull { // 调整内容的高度始终大于绘画的高度
             contentHeight = max(canvasView.bounds.height, (drawing.bounds.maxY + DrawingViewController.canvasOverscrollHeight) * canvasView.zoomScale)
         } else {
             contentHeight = canvasView.bounds.height

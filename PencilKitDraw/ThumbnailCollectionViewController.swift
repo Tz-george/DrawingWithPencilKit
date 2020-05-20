@@ -8,7 +8,7 @@ Abstract:
 import UIKit
 import PencilKit
 
-class ThumbnailCollectionViewController: UICollectionViewController, DataModelControllerObserver {
+class ThumbnailCollectionViewController: UICollectionViewController, DataModelControllerObserver {  // 所有图片的缩略图集合
     
     /// Data model for the drawings displayed by this view controller.
     var dataModelController = DataModelController()
